@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ahorcado Pro: Solo & Versus</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <style>
+        :root {
+            --primary: #0cf;
+            --bg: #0a0a15;
+            --card: #1a1a2e;
+            --text: #fff;
+            --danger: #ff3333;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        #game-container {
+            background: var(--card);
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 0 30px rgba(0, 204, 255, 0.2);
+            width: 95%;
+            max-width: 900px;
+            border: 1px solid #333;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            background: rgba(0,0,0,0.3);
+            padding: 10px 20px;
+            border-radius: 10px;
+        }
+
+        .mode-badge {
+            background: var(--primary);
+            color: #000;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        #canvas-holder {
+            background: #eee;
+            border-radius: 8px;
+            display: flex;
+            justify-content: center;
+        }
+
+        #word-display {
+            font-size: 2.2em;
+            letter-spacing: 8px;
+            margin: 20px 0;
+            font-family: monospace;
+            text-align: center;
+            min-height: 1.2em;
+        }
+
+        #keyboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+            gap: 5px;
+            margin: 15px 0;
+        }
+
+        button.letter {
+            padding: 10px;
+            font-size: 1rem;
+            cursor: pointer;
+            background: #333;
+            color: white;
+            border: 1px solid #444;
+            border-radius: 4px;
+        }
+
+        button.letter:disabled { opacity: 0.2; }
+
+        .powerups {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .p-btn {
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            color: white;
+        }
+
+        .reveal-btn { background: #3498db; }
+        .skip-btn { background: #95a5a6; }
+        .random-btn { background: #f39c12; grid-column: span 2; }
+
+        #curse-alert {
+            background: var(--danger);
+            color: white;
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: bold;
+            margin-bottom: 15px;
+            display: none;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); box-shadow: 0 0 15px rgba(255,0,0,0.5); }
+            100% { transform: scale(1); }
+        }
+
+        /* Modales */
+        .overlay {
+            position: fixed;
+            top:0; left:0; width: 100%; height:100%;
+            background: rgba(0,0,0,0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+        }
+
+        .modal {
+            background: var(--card);
+            padding: 40px;
+            border-radius: 20px;
+            border: 2px solid var(--primary);
+            text-align: center;
+            max-width: 400px;
+        }
+
+        .menu-btn {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            margin: 10px 0;
+            font-size: 1.2em;
+            background: var(--primary);
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        input[type="password"] {
+            padding: 10px;
+            width: 80%;
+            margin: 15px 0;
+            border-radius: 5px;
+            border: none;
+            font-size: 1.2em;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="menu-overlay" class="overlay">
+        <div class="modal">
+            <h1 style="color:var(--primary)">EL AHORCADO</h1>
+            <p>Selecciona un modo de juego</p>
+            <button class="menu-btn" onclick="initGame('solo')">Jugar Solo</button>
+            <button class="menu-btn" style="background:#8e44ad; color:white;" onclick="initGame('vs')">Duelo 2 Jugadores</button>
+        </div>
+    </div>
+
+    <div id="vs-overlay" class="overlay" style="display:none">
+        <div class="modal">
+            <h2 id="vs-title">Jugador 1</h2>
+            <p>Escribe la palabra secreta:</p>
+            <input type="password" id="secret-input" maxlength="15">
+            <button class="menu-btn" onclick="startVsRound()">Listo</button>
+        </div>
+    </div>
+
+    <div id="game-container">
+        <div class="header">
+            <div>Score P1: <span id="s1">0</span> | P2: <span id="s2">0</span></div>
+            <div id="mode-text" class="mode-badge">MODO: SOLO</div>
+            <div id="turn-info">Esperando...</div>
+        </div>
+
+        <div id="curse-alert">⚠️ ¡TURNO MALDITO! El primer error vale x2 ⚠️</div>
+
+        <div class="layout">
+            <div>
+                <div id="canvas-holder"></div>
+                <div id="word-display">_ _ _ _</div>
+                <div id="msg-box" style="text-align:center; color:#888; font-style:italic">Adivina una letra</div>
+            </div>
+
+            <div>
+                <div class="powerups">
+                    <button class="p-btn reveal-btn" onclick="useReveal()">Revelar (x<span id="c-rev">1</span>)</button>
+                    <button class="p-btn skip-btn" onclick="useSkip()">Saltar (x<span id="c-skip">1</span>)</button>
+                    <button class="p-btn random-btn" onclick="useRandom()">🎲 Letra Aleatoria</button>
+                </div>
+                <div id="keyboard"></div>
+                <div style="margin-top:10px; font-size:0.9em">Errores: <span id="wrong-list" style="color:var(--danger)"></span></div>
+            </div>
+        </div>
+    </div>
+
+<script>
+// --- CONFIGURACIÓN DE RECURSOS ---
+const SOUNDS = {
+    correct: new Audio('sounds/correct.mp3'),
+    wrong: new Audio('sounds/wrong.mp3'),
+    win: new Audio('sounds/win.mp3'),
+    loss: new Audio('sounds/loss.mp3')
+};
+
+let gameMode = 'solo'; // 'solo' o 'vs'
+let dictionary = ["ALGORITMO", "PYTHON", "VARIABLE", "RECURSION", "INTERNET", "TECLADO", "PANTALLA", "PROGRAMA", "SERVIDOR", "ESTRUCTURA", "LOGICA", "BINARIO","CASA","ESTRELLA","GALAXIA","NEBULA","PLANETA","PERRO","GATO","ELEFANTE","JIRAFA","LEON","TIGRE","OSO","LOBO","ZORRO","CABALLO","VACA","CERDO","OVEJA","CABRA","GALLINA","POLLO","PATICO","CONEJO","RATON","HAMSTER","COBAYA","LAGARTO","SERPIENTE","TORTUGA","RANA","SAPO","PEZ","TIBURON","BALLENA","DELFIN","PULPO","CALAMAR","MEDUSA","ESTRELLA_MAR","CANGREJO","LANGOSTA","CAMARON","MOSCA","MOSQUITO","ABEJA","AVISPA","HORMIGA","ARAÑA","ESCORPION","MARIPOSA","LIBELULA","SALTAMONTES","GRILLO","CUCARACHA","LOMBRIZ","CARACOL","BABOSA","AGUILA","HALCON","BUITRE","CUERVO","PALOMA","GORRION","CANARIO","LORO","GUACAMAYO","TUCAN","PINGUINO","AVESTRUZ","FLAMENCO","CISNE","PATICO","GAVIOTA","PELICANO","COLIBRI","BUHO","LECHUZA","MURCIELAGO","MANZANA","PERA","PLATANO","NARANJA","MANDARINA","LIMON","LIMA","FRUTILLA","FRESA","ARANDANO","MORA","CEREZA","DURAZNO","MELOCOTON","ALBARICOQUE","CIRUELA","UVA","SANDIA","MELON","PAPAYA","MANGO","PIÑA","COCO","AGUACATE","TOMATE","PEPINO","ZANAHORIA","PAPA","BATATA","CEBOLLA","AJO","PIMIENTO","CHILE","CALABAZA","ZAPALLO","BROCOLI","COLIFLOR","REPOLLO","LECHUGA","ESPINACA","ACELGA","APIO","ESPARRAGO","BERENJENA","CHAMPIÑON","SETAS","PAN","QUESO","LECHE","YOGUR","HUEVO","CARNE","POLLO","PESCADO","JAMON","SALCHICHA","CHORIZO","HAMBURGUESA","PIZZA","PASTA","ARROZ","FRIJOLES","LENTEJAS","GARBANZOS","SOPA","CALDO","ENSALADA","SANDWICH","TACO","BURRITO","EMPANADA","AREQUIPE","CHOCOLATE","GALLETA","PASTEL","TARTA","HELADO","GASEOSA","REFRESCO","JUGO","CAFE","TE","MATE","CERVEZA","VINO","WHISKY","RON","VODKA","AGUA","MESA","SILLA","SILLON","SOFA","CAMA","ARMARIO","ROPERO","ESTANTE","LIBRO","CUADERNO","HOJA","LAPIZ","LAPICERA","BOLIGRAFO","PLUMA","MARCADOR","GOMA","SACAPUNTAS","REGLA","COMPAS","TRANSPORTADOR","MOCHILA","CARTERA","MALETA","BOLSO","LLAVE","CELULAR","TELEFONO","COMPUTADORA","TECLADO","MOUSE","PANTALLA","MONITOR","IMPRESORA","TELEVISOR","RADIO","LAMPARA","FOCO","VELA","RELOJ","DESPERTADOR","CAMARA","FOTO","CUADRO","ESPEJO","VENTANA","PUERTA","PARED","TECHO","PISO","ALFOMBRA","CORTINA","COBIJA","FRAZADA","ALMOHADA","COLCHON","TOALLA","CEPILLO","PEINE","JABON","SHAMPOO","PASTA_DIENTES","HILO_DENTAL","ENJUAGUE","DESODORANTE","PERFUME","COLONIA","MAQUILLAJE","RIMEL","LABIAL","BOLSA","CANASTA","CAJA","BOTELLA","VASO","COPA","PLATO","BOWL","TAZA","CAFETERA","OLLA","SARTEN","CUCHILLO","TENEDOR","CUCHARA","CUCHARITA","SERVILLETA","MANTEL","BANDEJA","CAMISA","PLAYERA","REMERA","POLERA","CAMPERA","CHAQUETA","ABRIGO","BUZO","SUETER","PANTALON","JEAN","BERMUDA","SHORT","FALDA","VESTIDO","ENTERIZO","PIJAMA","ROPA_INTERIOR","CALZON","BRAGA","BOXER","SUJETADOR","MEDIAS","CALCETINES","ZAPATOS","ZAPATILLAS","BOTAS","SANDALIAS","CHANCLAS","OJOTAS","GORRO","GORRA","VISERA","PAÑUELO","BUFANDA","GUANTES","CINTURON","CORREA","GAFAS","LENTES","ANILLO","ARETE","PENDIENTE","COLLAR","CADENA","PULSERA","CIUDAD","PUEBLO","ALDEA","CAPITAL","PAIS","CONTINENTE","MUNDO","PLANETA","OCEANO","MAR","RIO","LAGO","LAGUNA","MONTAÑA","VOLCAN","CERRO","VALLE","DESIERTO","SELVA","BOSQUE","JUNGLA","PRADERA","CAMPO","GRANJA","PLAYA","COSTA","ISLA","ARCHIPIELAGO","PENINSULA","GOLFO","BAHIA","CABO","ESTRECHO","CANAL","GLACIAR","POLO","ECUADOR","TRÓPICO","MERIDIANO","PARALELO","PERSONA","GENTE","HOMBRE","MUJER","NIÑO","NIÑA","BEBE","ADULTO","JOVEN","VIEJO","ABUELO","ABUELA","PADRE","MADRE","HIJO","HIJA","HERMANO","HERMANA","TIO","TIA","PRIMO","PRIMA","SOBRINO","SOBRINA","ESPOSO","ESPOSA","MARIDO","MUJER","NOVIO","NOVIA","AMIGO","AMIGA","VECINO","VECINA","COMPAÑERO","COMPAÑERA","JEFE","TRABAJADOR","EMPLEADO","PROFESOR","MAESTRO","ALUMNO","ESTUDIANTE","DOCTOR","MEDICO","ENFERMERO","ABOGADO","INGENIERO","ARQUITECTO","ARTISTA","PINTOR","MUSICO","CANTANTE","BAILARIN","DEPORTISTA","FUTBOLISTA","BASQUETBOLISTA","TENISTA","NADADOR","CORREDOR","CICLISTA","AMAR","BESAR","ABRAZAR","AYUDAR","CANTAR","BAILAR","CAMINAR","CORRER","SALTAR","NADAR","VOLAR","COMER","BEBER","COCINAR","HABLAR","ESCUCHAR","MIRAR","VER","OBSERVAR","LEER","ESCRIBIR","DIBUJAR","PINTAR","CANTAR","JUGAR","GANAR","PERDER","COMPRAR","VENDER","PAGAR","COBRAR","ABRIR","CERRAR","ENTRAR","SALIR","SUBIR","BAJAR","LLEGAR","PARTIR","IR","VENIR","VOLVER","REGRESAR","QUEDAR","PONER","SACAR","METER","BUSCAR","ENCONTRAR","PERDER","ESPERAR","DESEAR","NECESITAR","QUERER","PODER","SABER","CONOCER","PENSAR","CREER","ENTENDER","COMPRENDER","APRENDER","ENSEÑAR","ESTUDIAR","TRABAJAR","DESCANSAR","DORMIR","DESPERTAR","LEVANTAR","DUCHAR","LAVAR","LIMPIAR","ORDENAR","GUARDAR","ROMPER","ARREGLAR","CONSTRUIR","DESTRUIR","CREAR","INVENTAR","DISFRUTAR","SONREIR","LLORAR","GRITAR","SUSURRAR","PREPARAR","ORGANIZAR","PLANEAR","VIAJAR","EXPLORAR","DESCUBRIR","INVESTIGAR","PREGUNTAR","RESPONDER","CONTAR","NARRAR","MOSTRAR","DEMOSTRAR","EXPLICAR","ACLARAR","ALTO","BAJO","GRANDE","PEQUEÑO","GORDO","FLACO","FUERTE","DEBIL","RAPIDO","LENTO","NUEVO","VIEJO","JOVEN","MODERNO","ANTIGUO","LINDO","BONITO","HERMOSO","FEO","GUAPO","ATRACTIVO","INTELIGENTE","LISTO","TONTO","SABIO","AMABLE","SIMAPTICO","ANTIPATICO","ALEGRE","FELIZ","TRISTE","ENOJADO","TRANQUILO","NERVIOSO","VALIENTE","COBARDE","HONESTO","MENTIROSO","GENEROSO","EGOISTA","RICOS","POBRE","ABUNDANTE","ESCASO","CALIENTE","FRIO","TIBIO","CALIDO","SOLEADO","LLUVIOSO","NUBLADO","VENTOSO","SECO","HUMEDO","LIMPIOS","SUCIO","CLARO","OSCURO","BLANCO","NEGRO","ROJO","AZUL","VERDE","AMARILLO","NARANJA","ROSADO","MARRON","GRIS","VIOLETA","PURPURA","DORADO","PLATEADO","SOL","LUNA","TIERRA","CIELO","AIRE","FUEGO","AGUA","VIENTO","NUBE","LLUVIA","NIEVE","GRANIZO","TRUENO","RAYO","RELAMPAGO","ARCOIRIS","ESTACION","PRIMAVERA","VERANO","OTOÑO","INVIERNO","DIA","NOCHE","MAÑANA","TARDE","ANOCHECER","MADRUGADA","HORA","MINUTO","SEGUNDO","TIEMPO","FECHA","SEMANA","MES","AÑO","DECADA","SIGLO","NUMERO","LETRA","PALABRA","FRASE","ORACION","PARRAFO","TEXTO","LIBRO","REVISTA","PERIODICO","ARTICULO","CUENTO","NOVELA","POEMA","VERSO","RIMA","CANCIÓN","MÚSICA","RITMO","MELODIA","ARMONIA","INSTRUMENTO","GUITARRA","PIANO","VIOLIN","FLAUTA","TROMPETA","BATERIA","BAJO","SAXO","CLARINETE","ARPA","ACORDEON","DEPORTE","FUTBOL","BALONCESTO","VOLEIBOL","TENIS","NATACION","ATLETISMO","CICLISMO","BOXEO","LUCHA","ARTES_MARCIALES","KARATE","JUDO","TAEKWONDO","ESGRIMA","GIMNASIA","DANZA","PATINAJE","ESQUI","SURF","BUCEO","ESCALADA","MONTAÑISMO","PESCA","CAZA","AJEDREZ","DOMINO","CARTAS","DADOS","ROMPECABEZAS","JUEGO","JUGUETE","PELOTA","GLOBO","COMETA","YO-YO","TREN","CARRO","AUTO","MOTO","BICICLETA","AVION","BARCO","HELICOPTERO","COHETE","NAVE","SATELITE","ESTACION_ESPACIAL","ASTRONAUTA","CIENCIA","TECNOLOGIA","INVENTO","DESCUBRIMIENTO","EXPERIMENTO","LABORATORIO","INVESTIGACION","CONOCIMIENTO","EDUCACION","ESCUELA","UNIVERSIDAD","COLEGIO","INSTITUTO","ACADEMIA","CLASE","MATERIA","ASIGNATURA","MATEMATICAS","FISICA","QUIMICA","BIOLOGIA","HISTORIA","GEOGRAFIA","LITERATURA","FILOSOFIA","PSICOLOGIA","SOCIOLOGIA","ECONOMIA","POLITICA","DERECHO","MEDICINA","ENFERMERIA","INGENIERIA","ARQUITECTURA","ARTE","MUSICA","PINTURA","ESCULTURA","DIBUJO","FOTOGRAFIA","CINE","TEATRO","LITERATURA","POESIA","NOVELA","CUENTO","ENSAYO","CRONICA","REPORTAJE","ENTREVISTA","BIOGRAFIA","AUTOBIOGRAFIA","MEMORIAS","DIARIO","CARTA","MENSAJE","CORREO","EMAIL","CHAT","FORO","RED_SOCIAL","FACEBOOK","TWITTER","INSTAGRAM","TIKTOK","WHATSAPP","TELEGRAM","SIGNAL","DISCORD","YOUTUBE","STREAMING","VIDEO","PODCAST","BLOG","PAGINA","APLICACION","PROGRAMA","SOFTWARE","HARDWARE","DISPOSITIVO","ORDENADOR","PORTATIL","TABLET","SMARTPHONE","DRON","ROBOT","ENERGIA","ELECTRICIDAD","MAGNETISMO","GRAVEDAD","FUERZA","MOVIMIENTO","VELOCIDAD","ACELERACION","MASA","PESO","VOLUMEN","DENSIDAD","PRESION","TEMPERATURA","CALOR","FRIO","COMBUSTIBLE","PETROLEO","GAS","CARBON","RENOVABLE","SOSTENIBLE","ECOLOGIA","CONTAMINACION","RECICLAJE","RESIDUO","BASURA","VERTEDERO","PLASTICO","VIDRIO","PAPEL","CARTON","METAL","MADERA","ALGODON","LANA","SEDA","CUERO","PIEL","CAUCHO","GOMA","ESPUMA","TELA","HILO","BOTON","CREMALLERA","CIERRE","VELCRO","CORCHETE","GANCHO","PERCHA","COLGADOR","ESTANTE","CAJON","ARMARIO","CLOSET","REPISA","BALDA","ESTACIONAMIENTO","GARAJE","COCHERA","TALLER","FABRICA","INDUSTRIA","ALMACEN","TIENDA","COMERCIO","MERCADO","SUPERMERCADO","HIPERMERCADO","FARMACIA","HOSPITAL","CLINICA","CONSULTORIO","DENTISTA","VETERINARIO","OPTICA","PELUQUERIA","BARBERIA","SPA","GIMNASIO","PARQUE","JARDIN","PLAZA","AVENIDA","CALLE","CARRETERA","AUTOPISTA","CAMINO","SENDERO","VEREDA","PUENTE","TUNEL","VIADUCTO","CRUCE","SEMAFORO","INTERSECCION","ROTONDA","GLORIETA","BANQUETA","ACERA","BORDILLO","ARBOL","FLOR","PLANTA","HIERBA","PASTO","MALEZA","ARBUSTO","MATORRAL","BOSQUE","SELVA","JUNGLA","DESIERTO","MONTAÑA","VOLCAN","LAGO","RIO","MAR","OCEANO","PLAYA","COSTA","ACANTILADO","ROCA","PIEDRA","ARENA","TIERRA","BARRO","LODO","POLVO","ARCILLA","MINERAL","METAL","HIERRO","ACERO","COBRE","BRONCE","ORO","PLATA","ALUMINIO","PLOMO","ESTAÑO","ZINC","MERCURIO","URANIO","CARBON","DIAMANTE","RUBI","ESMERALDA","ZAFIRO","TOPACIO","JADE","CUARZO","GRANITO","MARMO","PIZARRA","ARENISCA","CALIZA","YESO","SAL","AZUFRE","AMONIACO","OXIGENO","HIDROGENO","NITROGENO","CARBONO","DIOXIDO","METANO","GAS","VAPOR","LIQUIDO","SOLIDO","GASEOSO","PLASMA","MATERIA","ANTIMATERIA","ENERGIA","FUERZA","CAMPOS","PARTICULA","ATOMO","MOLECULA","ELECTRON","PROTON","NEUTRON","QUARK","FOTON","GRAVITON","BOSON","HIGGS","UNIVERSO","COSMOS","ESPACIO","TIEMPO","ESPACIO-TIEMPO","DIMENSION","MULTIVERSO","ESTRELLA","SUPERNOVA","NEBULOSA","GALAXIA","CUMULO","QUASAR","PULSAR","PLANETA","EXOPLANETA","SATELITE","LUNA","ASTEROIDE","COMETA","METEORO","METEORITO","METEORIDE","ECLIPSE","SOLSTICIO","EQUINOCCIO","MAREA","GRAVEDAD","ORBITA","ROTACION","TRASLACION","EJE","POLO","ECUADOR","TROPICO","CIRCULO_POLAR","LATITUD","LONGITUD","ALTITUD","MERIDIANO","PARALELO","HEMISFERIO","MAPAMUNDI","PLANISFERIO","CARTOGRAFIA","TOPOGRAFIA","GEOLOGIA","MINERALOGIA","PALEONTOLOGIA","FOSIL","DINOSAURIO","EXTINCION","EVOLUCION","DARWIN","ESPECIE","GENERO","FAMILIA","ORDEN","CLASE","FILO","REINO","DOMINIO","TAXONOMIA","CLASIFICACION","BIODIVERSIDAD","ECOSISTEMA","HABITAT","NICHO","PRODUCTOR","CONSUMIDOR","DESCOMPONEDOR","HERBIVORO","CARNIVORO","OMNIVORO","DEPREDADOR","PRESA","PARASITO","HOSPEDADOR","SIMBIOSIS","MUTUALISMO","COMENSALISMO","COMPETENCIA","ADAPTACION","SELECCION_NATURAL","MUTACION","GEN","ADN","ARN","PROTEINA","CROMOSOMA","HERENCIA","GENETICA","BIOTECNOLOGIA","CLONACION","CELULA","TEJIDO","ORGANO","SISTEMA","APARATO","ORGANISMO","VIDA","MUERTE","NACIMIENTO","CRECIMIENTO","DESARROLLO","REPRODUCCION","SEXUAL","ASEXUAL","EMBRION","FETO","GESTACION","PARTO","LACTANCIA","INFANCIA","ADOLESCENCIA","ADULTEZ","VEJEZ","SALUD","ENFERMEDAD","SINTOMA","DIAGNOSTICO","TRATAMIENTO","TERAPIA","MEDICAMENTO","VACUNA","ANTIBIOTICO","ANALGESICO","ANTIINFLAMATORIO","ANTIHISTAMINICO","ANTIDEPRESIVO","ANS IOLITICO","QUIMIOTERAPIA","RADIOTERAPIA","CIRUGIA","TRASPLANTE","PROTESIS","REHABILITACION","FISIOTERAPIA","PSICOLOGIA","PSIQUIATRIA","NEUROLOGIA","CARDIOLOGIA","DERMATOLOGIA","ONCOLOGIA","PEDIATRIA","GERIATRIA","GINECOLOGIA","OBSTETRICIA","UROLOGIA","OFTALMOLOGIA","OTORRINOLARINGOLOGIA","TRAUMATOLOGIA","REUMATOLOGIA","ENDOCRINOLOGIA","NEFROLOGIA","NEUMOLOGIA","HEMATOLOGIA","INMUNOLOGIA","ALERGOLOGIA","INFECTOLOGIA","EPIDEMIOLOGIA","MICROBIOLOGIA","VIROLOGIA","BACTERIOLOGIA","PARASITOLOGIA","FARMACOLOGIA","TOXICOLOGIA","NUTRICION","DIETETICA","ALIMENTO","NUTRIENTE","VITAMINA","MINERAL","PROTEINA","CARBOHIDRATO","GRASA","LIPIDO","FIBRA","AGUA","CALORIA","METABOLISMO","DIGESTION","ABSORCION","EXCRECION","ESTOMAGO","INTESTINO","HIGADO","PANCREAS","RIÑON","VEJIGA","PULMON","CORAZON","ARTERIA","VENA","CAPILAR","SANGRE","PLAQUETA","PLASMA","LINFATICO","ANTICUERPO","ANTIGENO","VACUNA","ALERGIA","INFLAMACION","INFECCION","VIRUS","BACTERIA","HONGO","PROTOZOARIO","PRION","ENFERMEDAD","SINDROME","TRASTORNO","DISCAPACIDAD","MINUSVALIA","PARALISIS","AMPUTACION","QUEMADURA","HERIDA","FRACTURA","ESGUINCE","TORCEDURA","LUXACION","CONTUSION","HEMATOMA","MORETON","CICATRIZ","QUIRURGICO","ANESTESIA","ANALGESIA","SEDACION","COMA","INCONSCIENCIA","DESMAYO","CONVULSION","EPILEPSIA","INFARTO","DERRAME","HEMORRAGIA","TROMBOSIS","EMBOLIA","ANEURISMA","CANCER","TUMOR","NEOPLASIA","METASTASIS","BENIGNO","MALIGNO","QUIMIOTERAPIA","RADIOTERAPIA","INMUNOTERAPIA","HORMONA","INSULINA","TIROIDES","ADRENALINA","DOPAMINA","SEROTONINA","MELATONINA","NEUROTRANSMISOR","SINAPSIS","NEURONA","CEREBRO","CEREBELO","NERVIOS","OJO","OIDO","NARIZ","LENGUA","PIEL","GUSTO","OLFATO","VISTA","OIDO","TACTO","EQUILIBRIO","PROPIOCEPCION","TERMOCEPCION","NOCICEPCION","DOLOR","SENSACION","PERCEPCION","ATENCION","MEMORIA","APRENDIZAJE","LENGUAJE","PENSAMIENTO","INTELIGENCIA","CONCIENCIA","EMOCION","SENTIMIENTO","ALEGRIA","TRISTEZA","MIEDO","IRA","SORPRESA","ASCO","VERGUENZA","ORGULLO","HUMILDAD","AMOR","ODIO","ENVIDIA","CELOS","COMPASION","EMPATIA","SOLIDARIDAD","ALTRUISMO","EGOISMO","RESPETO","TOLERANCIA","INTOLERANCIA","PREJUICIO","DISCRIMINACION","IGUALDAD","LIBERTAD","JUSTICIA","DERECHO","DEBER","RESPONSABILIDAD","SOLIDARIDAD","PAZ","GUERRA","CONFLICTO","VIOLENCIA","AGRESION","DEFENSA","SEGURIDAD","INSEGURIDAD","CRIMEN","DELITO","CASTIGO","PENA","RECOMPENSA","PREMIOS","CASTIGO","LEY","JUSTICIA","JUZGADO","TRIBUNAL","JUEZ","ABOGADO","FISCAL","DEFENSOR","PROCURADOR","POLICIA","INVESTIGADOR","DETECTIVE","FORENSE","PRUEBA","EVIDENCIA","INDICIO","TESTIGO","SOSPECHOSO","ACUSADO","CULPABLE","INOCENTE","CONDENA","ABSOLUCION","APELACION","INDULTO","AMNISTIA","PERDON","ARREPENTIMIENTO","RECONCILIACION","REPARACION","VENGANZA","RENCOR","MALDAD","BONDAD","VIRTUD","VICIO","HONESTIDAD","MENTIRA","ENGAÑO","FRAUDE","ESTAFA","ROBO","HURTO","ASALTO","SECUESTRO","ASESINATO","HOMICIDIO","GENOCIDIO","TORTURA","VIOLACION","ABUSO","MALTRATO","NEGLIGENCIA","DESCUIDO","ERROR","EQUIVOCACION","FALLO","ACERTO","ACIERTO","EXITO","FRACASO","TRIUNFO","VICTORIA","DERROTA","EMPATE","COMPETICION","TORNEO","LIGA","CAMPEONATO","MEDALLA","ORO","PLATA","BRONCE","RECORD","MARCA","MEJOR","PEOR","SUPERIOR","INFERIOR","IGUAL","DIFERENTE","SIMILAR","OPUESTO","CONTRARIO","COMPLEMENTARIO","RELACION","CONEXION","ENLACE","VINCULO","UNION","SEPARACION","DIVISION","FRAGMENTO","PARTE","TODO","CONJUNTO","GRUPO","EQUIPO","BANDA","CORO","ORQUESTA","CONCIERTO","ESPECTACULO","SHOW","PRESENTACION","ACTUACION","INTERPRETACION","REPRESENTACION","OBRA","TEATRO","CINE","PELICULA","CORTOMETRAJE","LARGOMETRAJE","DOCUMENTAL","SERIE","CAPITULO","EPISODIO","TEMPORADA","PROGRAMA","PRODUCCION","DIRECTOR","PRODUCTOR","GUIONISTA","ACTOR","ACTRIZ","PERSONAJE","PAPEL","ROLE","FUNCION","TRAMA","ARGUMENTO","HISTORIA","RELATO","NARRACION","DESCRIPCION","DIALOGO","MONOLOGO","ESCOENA","ACTO","ENTRADA","SALIDA","APARICION","DESAPARICION","TRANSICION","CAMBIO","TRANSFORMACION","EVOLUCION","INVOLUCION","PROGRESO","RETROCESO","AVANCE","MEJORA","EMPEORAMIENTO","CRISIS","SOLUCION","PROBLEMA","DESAFIO","OPORTUNIDAD","RIESGO","PELIGRO","AMENAZA","VULNERABILIDAD","FORTALEZA","DEBILIDAD","VENTAJA","DESVENTAJA","BENEFICIO","PERJUICIO","GANANCIA","PERDIDA","COSTE","PRECIO","VALOR","COSTO","INVERSION","CAPITAL","INTERES","DIVIDENDO","RENTABILIDAD","PRODUCTIVIDAD","EFICIENCIA","EFICACIA","EFECTIVIDAD","CALIDAD","CANTIDAD","ABUNDANCIA","ESCASEZ","SUFICIENCIA","INSUFICIENCIA","EXCESO","DEFECTO","FALTA","CARENCIA","NECESIDAD","DESEO","ASPIRACION","META","OBJETIVO","FIN","PROPOSITO","RAZON","MOTIVO","CAUSA","EFECTO","CONSECUENCIA","RESULTADO","CONCLUSION","CIERRE","APERTURA","INICIO","COMIENZO","FIN","TERMINO","LIMITE","FRONTERA","BORDE","MARGEN","ORILLA","FILO","PUNTA","EXTREMO","FINAL","PRINCIPIO","ORIGEN","FUENTE","RAIZ","BASE","CIMIENTO","FUNDAMENTO","ESENCIA","SUSTANCIA","NATURALEZA","CARACTER","PERSONALIDAD","IDENTIDAD","INDIVIDUALIDAD","COLECTIVIDAD","SOCIEDAD","COMUNIDAD","POBLACION","HUMANIDAD","MUNDO","GLOBO","NATURALEZA","ECOLOGIA","CONTAMINACION","RECICLAJE","SOSTENIBILIDAD","DESERTIFICACION","DEFORESTACION","EXTINCION","BIODIVERSIDAD","SANTUARIO","ZOOLÓGICO","ACUARIO","VIVERO","AGRICULTURA","GANADERIA","PESCA","SILVICULTURA","MINERIA","INDUSTRIA","COMERCIO","NEGOCIO","EMPRESA","MERCADO","ECONOMIA","FINANZAS","BANCA","INVERSION","AHORRO","PRESTAMO","CREDITO","DEUDA","HIPOTECA","IMPUESTO","TRIBUTO","PRESUPUESTO","GASTO","INGRESO","PIB","INFLACION","DEFLACION","RECESION","DEPRESION","RECUPERACION","EXPANSION","BOOM","BURBUJA","ESTANCAMIENTO","DESEMPLEO","PARO","SUBDESARROLLO","POBREZA","RIQUEZA","DESIGUALDAD","FEMINISMO","INCLUSION","DIVERSIDAD","PLURALIDAD","MASCULINO","FEMENINO","ESTEREOTIPO","PREJUICIO","CUOTA","PARIDAD","REPRESENTACION","PARTICIPACION","CIUDADANIA","NACIONALIDAD","PASAPORTE","VISA","FRONTERA","INMIGRACION","EMIGRACION","EXILIO","REFUGIO","ASILO","DEPORTACION","EXTRADICION","CIUDADANO","EXTRANJERO","RESIDENTE","VISITANTE","TURISTA","VIAJERO","MIGRANTE","NOMADA","SEDENTARIO","ESTILO_VIDA","COSTUMBRE","TRADICION","RITO","CEREMONIA","FESTIVIDAD","CELEBRACION","FIESTA","VACACIONES","FERIADO","DESCANSO","OCIO","ENTRETENIMIENTO","RECREACION","DEPORTE","JUEGO","PASATIEMPO","AFICION","HOBBY","COLECCION","COLECCIONISTA","MUSEO","GALERIA","EXPOSICION","FERIA","EVENTO","CONCURSO","RIFA","SORTEO","LOTERIA","APUESTA","CASINO","BINGO","RULETA","BLACKJACK","POKER","TRAGAPERRAS","LUDOPATIA","ADICCION","DEPENDENCIA","VICIO","DROGAS","ALCOHOL","TABACO","CAFEINA","ESTIMULANTE","DEPRESOR","ALUCINOGENO","MARIHUANA","COCAINA","HEROINA","METANFETAMINA","ÉXTASIS","LSD","OPIO","MORFINA","FENTANILO","BENZODIACEPINA","BARBITURICO","ANESTESICO","ANALGESICO","ANTIDEPRESIVO","ANTIPSICOTICO","ESTABILIZADOR","ANSIOLITICO","HIPNOTICO","SEDANTE","TRANQUILIZANTE","ANTICONVULSIVO","INSULINA","SUPLEMENTO","VITAMINA","MINERAL","PROTEINA","AMINOACIDO","ENZIMA","COENZIMA","HORMONA","NEUROTRANSMISOR","FEROMONA","ANTIOXIDANTE","RADICAL_LIBRE","ESTRES_OXIDATIVO","INFLAMACION","ANTIINFLAMATORIO","VACUNA","SUERO","ANTICUERPO","INMUNOGLOBULINA","ALERGENO","ANTIGENO","HISTAMINA","ANTIHISTAMINICO","CORTICOIDE","ESTEROIDE","ANABOLICO","ANDROGENO","ESTROGENO","PROGESTERONA","TESTOSTERONA","TIROXINA","ADRENALINA","NORADRENALINA","DOPAMINA","SEROTONINA","MELATONINA","HISTAMINA","BRADICININA","PROSTAGLANDINA","LEUCOTRIENO","TROMBOXANO","ENDORFINA","ENCEFALINA","DINORFINA","NEUROPEPTIDO","NEUROTROFINA","CITOCINA","QUIMIOCINA","INTERLEUCINA","INTERFERON","TNF","LINFOCINA","MONOCINA","HEMATOPOYESIS","ERITROPOYETINA","TROMBOPOYETINA","LEUCOPOYESIS","GRANULOPOYESIS","LINFOPOYESIS","MONOPOYESIS","MEGACARIOPOYESIS","HEMATOCRITO","HEMOGLOBINA","HEMATIES","LEUCOCITOS","PLAQUETAS","PLASMA","SUERO","MACROFAGO","NEUTROFILO","EOSINOFILO","BASOFILO","MASTOCITO","DENDRITICA","MONOCITO","MEGACARIOCITO","ERITROCITO","RETICULOCITO","HEMATOPOYESIS","TIMO","BAZO","LINFA","AMIGDALA","APENDICE","INMUNIDAD","AUTOINMUNIDAD","ALERGIA","HIPERSENSIBILIDAD","ANAFILAXIS","INMUNOSUPRESION","TRASPLANTE","RECHAZO","INMUNOTERAPIA","VACUNACION","INMUNIZACION","SUEROTERAPIA","INMUNOSUPRESOR","INMUNOESTIMULANTE","ADYUVANTE","TOXOIDE","ANTITOXINA","INMUNOGLOBULINA","PLASMAFÉRESIS","AFÉRESIS","LEUCAFÉRESIS","PLAQUETAFÉRESIS","HEMATOPOYESIS","MORFOGÉNESIS","GASTRULACIÓN","NEURULACIÓN","ORGANOGÉNESIS","HISTOGÉNESIS","APOPTOSIS","NECROSIS","AUTOFAGIA","MITOSIS","MEIOSIS","INTERFASE","PROFASE","METAFASE","ANAFASE","TELOFASE","CITOQUINESIS","TRANSCRIPCIÓN","TRADUCCIÓN","MUTACIÓN","POLIMORFISMO","GENOTIPO","FENOTIPO","HERENCIA","DOMINANTE","RECESIVO","CODOMINANTE","MITOCONDRIAL","EPIGENÉTICA","METILACIÓN","ACETILACIÓN","BIOIMPRESIÓN","PRÓTESIS","BIOMATERIALES","NANOMEDICINA","NANOTECNOLOGÍA","BIOSENSOR","BIOMARCADOR","FARMACOGENÓMICA","FARMACOGENÉTICA","BIOINFORMÁTICA","GENÓMICA","PROTEÓMICA","METABOLÓMICA","TRANSCRIPTÓMICA","EPIGENÓMICA","INTERACTOMA","SIMULACIÓN","INTELIGENCIA_ARTIFICIAL","ROBÓTICA","AUTOMATIZACIÓN","DOMÓTICA","VISUALIZACIÓN","ESTADÍSTICA","PROBABILIDAD","MATEMÁTICAS","ÁLGEBRA","GEOMETRÍA","CÁLCULO","TRIGONOMETRÍA","ESTADÍSTICA","PROBABILIDAD","ANÁLISIS","TOPOLOGÍA","CRIPTOGRAFÍA","OPTIMIZACIÓN","SIMULACIÓN","MODELADO","FÍSICA","MECÁNICA","TERMODINÁMICA","ELECTROMAGNETISMO","ÓPTICA","ACÚSTICA","FÍSICA_CUÁNTICA","RELATIVIDAD","ASTROFÍSICA","COSMOLOGÍA","GEOFÍSICA","METEOROLOGÍA","CLIMATOLOGÍA","OCEANOGRAFÍA","HIDROLOGÍA","GLACIOLOGÍA","GEOLOGÍA","MINERALOGÍA","PETROLOGÍA","ESTRATIGRAFÍA","PALEONTOLOGÍA","ARQUEOLOGÍA","ANTROPOLOGÍA","ETNOGRAFÍA","SOCIOLOGÍA","PSICOLOGÍA","ECONOMÍA","POLÍTICA","FILOSOFÍA","ÉTICA","ESTÉTICA","EPISTEMOLOGÍA","METAFÍSICA","LÓGICA","ONTOLOGÍA","AXIOLOGÍA","TEOLOGÍA","RELIGIÓN","ESPIRITUALIDAD","MITOLOGÍA","LEYENDA","FOLCLORE","TRADICIÓN","CULTURA","ARTE","MÚSICA","LITERATURA","POESÍA","TEATRO","CINE","FOTOGRAFÍA","ESCULTURA","PINTURA","ARQUITECTURA","DISEÑO","MODA","GASTRONOMÍA","COCINA","ENOLOGÍA","VITICULTURA","AGRICULTURA","JARDINERÍA","BOTÁNICA","ZOOLOGÍA","MICOLOGÍA","ENTOMOLOGÍA","ORNITOLOGÍA","ICTIOLOGÍA","HERPETOLOGÍA","MASTOZOOLOGÍA","PRIMATOLOGÍA","ETOLOGÍA","ECOLOGÍA","ETOLOGÍA","BIOQUÍMICA","BIOFÍSICA","GENÉTICA","EVOLUCIÓN","PALEONTOLOGÍA","LINGÜÍSTICA","IDIOMA","LENGUA","DIALECTO","ACENTO","GRAMÁTICA","SINTAXIS","SEMÁNTICA","PRAGMÁTICA","FONÉTICA","FONOLOGÍA","MORFOLOGÍA","LEXICOLOGÍA","ETIMOLOGÍA","ONOMÁSTICA","TOPONIMIA","ANTROPONIMIA","TRADUCCIÓN","INTERPRETACIÓN","COMUNICACIÓN","PERIODISMO","PUBLICIDAD","MARKETING","BRANDING","PROGRAMACIÓN","REDES","HACKING","CRIPTOGRAFÍA","ROBÓTICA","AUTOMATIZACIÓN","DOMÓTICA","DRONES","METAVERSO","VIDEOJUEGOS","GAMIFICACIÓN","MOOC","SIMULADOR","HÁPTICA","NEUROTECNOLOGÍA","BIOELECTRÓNICA","MICROFLUÍDICA","TELEMEDICINA","FARMACOVIGILANCIA","BIOSEGURIDAD","BIOÉTICA","EPIDEMIOLOGÍA","TOXICOLOGÍA","CRIMINOLOGÍA","VICTIMOLOGÍA","PATENTES","MARCAS","LICENCIAS","PRIVACIDAD","RESILIENCIA","DEMOCRACIA","GOBERNANZA","PENSIONES","DESEMPLEO","POBREZA","VULNERABILIDAD","VOLUNTARIADO","FILANTROPÍA","COOPERATIVISMO","RECICLAJE","REUTILIZACIÓN","REDUCCIÓN","REPARACIÓN","BIOMASA","BIOCOMBUSTIBLE","BATERÍAS","ELECTROLINERA","BICICLETA","PEATÓN","URBANISMO","PERMACULTURA","AGROECOLOGÍA","NUTRICIÓN","TRAZABILIDAD","BROMATOLOGÍA","CHEF","RESTAURANTE","HOSTELERÍA","TURISMO","ECOTURISMO","AGROTURISMO","VIAJE","EXCURSIÓN","RUTA","ITINERARIO","ALOJAMIENTO","HOTEL","HOSTAL","CAMPING","ALBERGUE","RESORT","CRUCERO","RESERVA","AEROLÍNEA","AEROPUERTO","VUELO","RESERVACIÓN","EQUIPAJE","FACTURACIÓN","EMBARQUE","DESEMBARQUE","TRÁNSITO","CONEXIÓN","ESCALA","RETRASO","CANCELACIÓN","OVERBOOKING","COMPENSACIÓN","REPATRIACIÓN","EVACUACIÓN","PANDEMIA","EPIDEMIA","CUARENTENA","AISLAMIENTO","MASCARILLA","RESPIRADOR","VENTILACIÓN","DESINFECCIÓN","SANEAMIENTO","HIGIENE","GUANTES","PROTOCOLO","PREVENCIÓN","ANTÍGENO","SEROLÓGICA","VACUNACIÓN","TELETRABAJO","HOMEOFFICE","BLUETOOTH","GEOLOCALIZACIÓN","MAPAS","NAVEGACIÓN","TELEDETECCIÓN","SATÉLITE","DRON","RADAR","SONAR","ECOSONDA","TOPOGRAFÍA","LEVANTAMIENTO","GEODESIA","CARTOGRAFÍA","ORTOFOTO","FOTOGRAMETRÍA","HÁPTICA","RETROALIMENTACIÓN","ITERACIÓN","ENTREGABLE","PROTOTIPO","MAQUETA","ACCESIBILIDAD","USABILIDAD","MÉTRICAS","CONVERSIÓN","NEWSLETTER","FACEBOOK","INSTAGRAM","TIKTOK","INFLUENCER","COLABORACIÓN","PATROCINIO","COMISIÓN","IMPRESIONES","CONSENTIMIENTO","PLAGIO","INFRACCIÓN","ARBITRAJE","MEDIACIÓN","JUICIO","SENTENCIA","RECURSO","EJECUCIÓN","CUMPLIMIENTO","SANCIÓN","MULTA","CORRUPCIÓN","SOBORNO","COHECHO","MALVERSACIÓN","NEGLIGENCIA","SEGURO","PÓLIZA","PRIMA","SINIESTRO","INDEMNIZACIÓN","COBERTURA","EXCLUSIÓN","FRANQUICIA","PERITO","TASACIÓN","VALORACIÓN","LIQUIDACIÓN","SINIESTRALIDAD","ERGONOMÍA","PSICOSOCIOLOGÍA","BURNOUT","MOBBING","CONCILIACIÓN","CORRESPONSABILIDAD","EXCEDENCIA","HORARIO","FLEXIBILIDAD","TELETRABAJO","DESCANSO","VACACIONES","PERMISO","JUBILACIÓN","PENSIÓN","COTIZACIÓN","PRESTACIONES","SUBSIDIO","AYUDA","BECA","SUBVENCIÓN","FINANCIACIÓN","CRÉDITO","PRÉSTAMO","MICROCRÉDITO","MICROFINANZAS","AHORRO","INVERSIÓN","BOLSA","ACCIÓN","BONO","DIVERSIFICACIÓN","RENTABILIDAD","LIQUIDEZ","VOLATILIDAD","CORRELACIÓN","CAPITALIZACIÓN","DIVIDENDO","LIQUIDEZ","BALANCE","MEMORIA","AUDITORÍA","CUMPLIMIENTO","COMPLIANCE","SOSTENIBILIDAD"];
+
+let state = {
+    setter: 1, guesser: 2,
+    word: "", guessed: [], revealed: [],
+    errors: 0, maxErrors: 6,
+    scores: {1: 0, 2: 0},
+    items: { reveal: 1, skip: 1 },
+    isCursed: false
+};
+
+// --- P5.JS PARA EL DIBUJO ---
+function setup() {
+    let cnv = createCanvas(200, 250);
+    cnv.parent('canvas-holder');
+}
+
+function draw() {
+    background(240);
+    stroke(50);
+    strokeWeight(4);
+    
+    // Estructura fija
+    line(20, 230, 180, 230); // Base
+    line(50, 230, 50, 20);   // Poste
+    line(50, 20, 130, 20);   // Techo
+    line(130, 20, 130, 50);  // Soga
+
+    if (state.errors >= 1) circle(130, 70, 40); // Cabeza
+    if (state.errors >= 2) line(130, 90, 130, 160); // Cuerpo
+    if (state.errors >= 3) line(130, 110, 100, 140); // Brazo I
+    if (state.errors >= 4) line(130, 110, 160, 140); // Brazo D
+    if (state.errors >= 5) line(130, 160, 100, 200); // Pierna I
+    if (state.errors >= 6) line(130, 160, 160, 200); // Pierna D
+}
+
+// --- LÓGICA DE JUEGO ---
+
+function initGame(mode) {
+    gameMode = mode;
+    state.scores = {1:0, 2:0};
+    document.getElementById('menu-overlay').style.display = 'none';
+    document.getElementById('mode-text').innerText = `MODO: ${mode.toUpperCase()}`;
+    
+    if (mode === 'solo') {
+        state.setter = "CPU";
+        state.guesser = 1;
+        startRound();
+    } else {
+        state.setter = 1;
+        state.guesser = 2;
+        showVsModal();
+    }
+}
+
+function showVsModal() {
+    document.getElementById('vs-overlay').style.display = 'flex';
+    document.getElementById('vs-title').innerText = `Jugador ${state.setter}`;
+    document.getElementById('secret-input').value = "";
+    document.getElementById('secret-input').focus();
+}
+
+function startVsRound() {
+    let val = document.getElementById('secret-input').value.toUpperCase().trim();
+    if (val.length < 2 || !/^[A-ZÑ]+$/.test(val)) {
+        alert("Palabra no válida");
+        return;
+    }
+    state.word = val;
+    document.getElementById('vs-overlay').style.display = 'none';
+    setupRoundLogic();
+}
+
+function startRound() {
+    if (gameMode === 'solo') {
+        state.word = dictionary[Math.floor(Math.random() * dictionary.length)];
+        setupRoundLogic();
+    }
+}
+
+function setupRoundLogic() {
+    state.guessed = [];
+    state.revealed = [];
+    state.errors = 0;
+    
+    // 25% Probabilidad de Maldición
+    state.isCursed = Math.random() < 0.25;
+    document.getElementById('curse-alert').style.display = state.isCursed ? 'block' : 'none';
+    
+    document.getElementById('turn-info').innerText = gameMode === 'solo' ? "¡Adivina!" : `Adivina: P${state.guesser}`;
+    
+    createKeyboard();
+    updateUI();
+}
+
+function createKeyboard() {
+    const kb = document.getElementById('keyboard');
+    kb.innerHTML = '';
+    "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ".split('').forEach(l => {
+        const b = document.createElement('button');
+        b.innerText = l;
+        b.className = 'letter';
+        b.id = 'key-' + l;
+        b.onclick = () => handleGuess(l);
+        kb.appendChild(b);
+    });
+}
+
+function handleGuess(l) {
+    if (state.guessed.includes(l)) return;
+    state.guessed.push(l);
+    document.getElementById('key-'+l).disabled = true;
+
+    if (state.word.includes(l)) {
+        document.getElementById('msg-box').innerText = "¡Bien!";
+         SOUNDS.correct.play();
+    } else {
+        SOUNDS.wrong.play();
+        let penalty = 1;
+        if (state.isCursed) {
+            penalty = 2;
+            state.isCursed = false; // Se consume el efecto
+            document.getElementById('curse-alert').style.display = 'none';
+            document.getElementById('msg-box').innerText = "¡MALDICIÓN! Erraste x2";
+        } else {
+            document.getElementById('msg-box').innerText = "Letra incorrecta";
+        }
+        state.errors += penalty;
+    }
+
+    updateUI();
+    checkEnd();
+}
+
+function checkEnd() {
+    let win = state.word.split('').every(l => state.guessed.includes(l) || state.revealed.includes(l));
+    
+    if (win) {
+        state.scores[state.guesser]++;
+        state.items.reveal++; // Bonus
+        alert("¡GANASTE! La palabra era " + state.word);
+        SOUNDS.win.play();
+        resetOrSwap();
+    } else if (state.errors >= state.maxErrors) {
+        SOUNDS.loss.play();
+        if (gameMode === 'vs') state.scores[state.setter]++;
+        alert("PERDISTE. La palabra era " + state.word);
+        resetOrSwap();
+    }
+}
+
+function resetOrSwap() {
+    if (gameMode === 'vs') {
+        let temp = state.setter;
+        state.setter = state.guesser;
+        state.guesser = temp;
+        showVsModal();
+    } else {
+        startRound();
+    }
+}
+
+function updateUI() {
+    // Dibujar guiones
+    let display = state.word.split('').map(l => 
+        (state.guessed.includes(l) || state.revealed.includes(l)) ? l : "_"
+    ).join(" ");
+    document.getElementById('word-display').innerText = display;
+
+    // Errores
+    let wrongs = state.guessed.filter(l => !state.word.includes(l));
+    document.getElementById('wrong-list').innerText = wrongs.join(", ");
+
+    // Items
+    document.getElementById('c-rev').innerText = state.items.reveal;
+    document.getElementById('c-skip').innerText = state.items.skip;
+    
+    document.getElementById('s1').innerText = state.scores[1];
+    document.getElementById('s2').innerText = state.scores[2];
+}
+
+// --- POWER UPS ---
+
+function useReveal() {
+    if (state.items.reveal <= 0) return;
+    let pool = state.word.split('').filter(l => !state.guessed.includes(l) && !state.revealed.includes(l));
+    if (pool.length > 0) {
+        state.revealed.push(pool[0]);
+        state.items.reveal--;
+        updateUI();
+        checkEnd();
+    }
+}
+
+function useSkip() {
+    if (state.items.skip <= 0) return;
+    state.items.skip--;
+    resetOrSwap();
+}
+
+function useRandom() {
+    let pool = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ".split('').filter(l => !state.guessed.includes(l));
+    if (pool.length > 0) {
+        handleGuess(pool[Math.floor(Math.random()*pool.length)]);
+    }
+}
+</script>
+</body>
+</html>
